@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Huarong Pass 华容道 — Sliding Block Puzzle</title>
+<meta name="description" content="A playable HTML version of the classic Chinese sliding-block puzzle Huarong Dao (Klotski): slide Cao Cao's 2×2 block out of the pass.">
+<style>
+  :root{
+    --frame: 18px;
+    --wood1:#8a5a2b; --wood2:#6b421d; --wood3:#54321a;
+    --felt:#241c14;
+    --ink:#f2e8d5;
+    --accent:#e8b04b;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    min-height:100vh;
+    background:
+      radial-gradient(1200px 700px at 30% -10%, #33402f 0%, #202b22 45%, #161d18 100%);
+    color:var(--ink);
+    font-family:"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .zh{ font-family:"Kaiti SC","KaiTi","STKaiti","Noto Serif SC","Songti SC",serif; }
+
+  header{
+    text-align:center; padding:18px 12px 6px;
+  }
+  header h1{
+    margin:0; font-size:clamp(22px,3.4vw,34px); letter-spacing:.5px;
+  }
+  header h1 .zh{ color:var(--accent); }
+  header p.sub{ margin:6px 0 0; opacity:.75; font-size:14px; }
+
+  main{
+    display:flex; flex-wrap:wrap; gap:22px;
+    justify-content:center; align-items:flex-start;
+    padding:14px 16px 30px; max-width:1150px; margin:0 auto;
+  }
+
+  /* ============ Board ============ */
+  #boardWrap{ position:relative; }
+  #board{
+    position:relative;
+    background:
+      linear-gradient(145deg, var(--wood1), var(--wood2) 55%, var(--wood3));
+    border-radius:14px;
+    box-shadow:0 18px 40px rgba(0,0,0,.55), inset 0 2px 0 rgba(255,255,255,.12);
+    padding:var(--frame);
+  }
+  #inner{
+    position:relative;
+    background:
+      radial-gradient(120% 120% at 50% 0%, #2e2418 0%, var(--felt) 70%);
+    border-radius:6px;
+    box-shadow:inset 0 3px 10px rgba(0,0,0,.6);
+    overflow:visible;
+  }
+  #grid{
+    position:absolute; inset:0; border-radius:6px; opacity:.25;
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,.10) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,.10) 1px, transparent 1px);
+  }
+  #blocks{ position:absolute; inset:0; }
+  .block{
+    position:absolute; left:0; top:0;
+    border-radius:8px;
+    display:flex; align-items:center; justify-content:center;
+    cursor:grab; user-select:none; touch-action:none;
+    box-shadow:0 3px 8px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.25), inset 0 -3px 6px rgba(0,0,0,.35);
+    border:1px solid rgba(0,0,0,.45);
+    transition:transform .18s ease-out, box-shadow .2s, filter .2s;
+    will-change:transform;
+    color:#fdf6e8;
+    text-shadow:0 1px 2px rgba(0,0,0,.55);
+  }
+  .block::after{ /* wood grain */
+    content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+    background:
+      repeating-linear-gradient(115deg, rgba(255,255,255,.05) 0 2px, transparent 2px 9px),
+      repeating-linear-gradient(65deg, rgba(0,0,0,.06) 0 1px, transparent 1px 13px);
+    mix-blend-mode:overlay;
+  }
+  .block.selected{ box-shadow:0 0 0 3px var(--accent), 0 4px 10px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.25); }
+  .block.dragging{ transition:none; cursor:grabbing; filter:brightness(1.12); z-index:9; }
+  .block .lbl{ pointer-events:none; }
+  .block .lbl.vert{ writing-mode:vertical-rl; text-orientation:upright; letter-spacing:2px; }
+  .block.cao{ border:2px solid #e8c15c; }
+
+  /* frame pieces drawn over blocks, with the exit gap at bottom center */
+  .fr{ position:absolute; z-index:5; background:linear-gradient(145deg, var(--wood1), var(--wood3)); box-shadow:0 1px 3px rgba(0,0,0,.4); }
+  .fr.top{ top:0; left:0; right:0; height:var(--frame); border-radius:14px 14px 0 0; }
+  .fr.left{ top:0; left:0; bottom:0; width:var(--frame); border-radius:14px 0 0 14px; }
+  .fr.right{ top:0; right:0; bottom:0; width:var(--frame); border-radius:0 14px 14px 0; }
+  .fr.botL{ bottom:0; left:0; width:calc(var(--frame) + (100% - 2*var(--frame))/4); height:var(--frame); border-radius:0 0 0 10px; }
+  .fr.botR{ bottom:0; right:0; width:calc(var(--frame) + (100% - 2*var(--frame))/4); height:var(--frame); border-radius:0 0 10px 0; }
+  #exitGlow{
+    position:absolute; z-index:4; bottom:2px;
+    height:10px; border-radius:5px;
+    background:radial-gradient(60% 100% at 50% 100%, rgba(232,176,75,.55), rgba(232,176,75,0) 80%);
+    pointer-events:none;
+  }
+  #exitLabel{
+    position:absolute; z-index:6; text-align:center; pointer-events:none;
+    color:var(--accent); font-size:15px; letter-spacing:3px;
+    text-shadow:0 1px 2px rgba(0,0,0,.6);
+  }
+  #exitLabel .arrow{ display:block; font-size:13px; letter-spacing:0; opacity:.8; }
+
+  /* ============ Panel ============ */
+  #panel{ flex:1 1 330px; max-width:430px; min-width:300px; }
+  .card{
+    background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.10);
+    border-radius:12px; padding:14px 16px; margin-bottom:14px;
+    box-shadow:0 6px 18px rgba(0,0,0,.25);
+  }
+  .card h2{ margin:0 0 10px; font-size:15px; letter-spacing:1px; text-transform:uppercase; color:var(--accent); }
+  select{
+    width:100%; padding:9px 10px; border-radius:8px; font-size:14px;
+    background:#2b332b; color:var(--ink); border:1px solid rgba(255,255,255,.18);
+  }
+  .stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:12px; text-align:center; }
+  .stat{ background:rgba(0,0,0,.25); border-radius:8px; padding:8px 4px; }
+  .stat .v{ font-size:19px; font-weight:700; color:#fff; }
+  .stat .k{ font-size:11px; opacity:.7; margin-top:2px; }
+  .btns{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  button{
+    padding:9px 13px; border-radius:9px; border:1px solid rgba(255,255,255,.18);
+    background:linear-gradient(180deg,#4c5a48,#39463a); color:var(--ink);
+    font-size:13.5px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.3);
+  }
+  button:hover{ filter:brightness(1.15); }
+  button:disabled{ opacity:.4; cursor:default; filter:none; }
+  button.gold{ background:linear-gradient(180deg,#8a6a2b,#6b4f1d); border-color:#c9a25a; }
+  .legend{ display:flex; flex-wrap:wrap; gap:6px 14px; font-size:13px; }
+  .legend .sw{ display:inline-block; width:14px; height:14px; border-radius:4px; margin-right:6px; vertical-align:-2px; border:1px solid rgba(0,0,0,.4); }
+  .story{ font-size:13.5px; line-height:1.55; opacity:.9; }
+  .story p{ margin:0 0 9px; }
+  .story a{ color:var(--accent); }
+  .hintline{ font-size:12.5px; opacity:.75; margin-top:8px; }
+
+  /* toast */
+  #toast{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
+    background:#20261f; border:1px solid rgba(255,255,255,.2); color:var(--ink);
+    padding:10px 16px; border-radius:10px; font-size:14px; opacity:0; pointer-events:none;
+    transition:opacity .25s, transform .25s; z-index:60; max-width:90vw; text-align:center;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* win overlay */
+  #winOverlay{
+    position:absolute; inset:-30px; z-index:40; display:none;
+    align-items:center; justify-content:center; text-align:center;
+    background:rgba(10,12,10,.62); border-radius:16px; backdrop-filter:blur(3px);
+  }
+  #winOverlay.show{ display:flex; }
+  #winOverlay .msg{ max-width:85%; }
+  #winOverlay h3{ margin:0 0 6px; font-size:clamp(22px,4vw,34px); color:var(--accent); }
+  #winOverlay .zhbig{ font-size:clamp(26px,5vw,44px); color:#fff; margin:0 0 8px; }
+  #winOverlay p{ margin:4px 0 14px; font-size:14.5px; opacity:.9; }
+  .confetti{ position:absolute; top:-12px; width:8px; height:14px; border-radius:2px; animation:fall linear forwards; z-index:41; }
+  @keyframes fall{ to{ transform:translateY(120vh) rotate(720deg); opacity:.2; } }
+
+  footer{ text-align:center; font-size:12px; opacity:.6; padding:0 16px 24px; }
+  footer a{ color:var(--accent); }
+
+  @media (max-width: 760px){
+    main{ padding:10px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="zh">华容道</span> · Huarong Pass</h1>
+  <p class="sub">The classic Chinese sliding-block puzzle — free Cao Cao (曹操) through the pass at the bottom.</p>
+</header>
+
+<main>
+  <section id="boardWrap">
+    <div id="board">
+      <div id="inner">
+        <div id="grid"></div>
+        <div id="blocks"></div>
+      </div>
+      <div class="fr top"></div>
+      <div class="fr left"></div>
+      <div class="fr right"></div>
+      <div class="fr botL"></div>
+      <div class="fr botR"></div>
+      <div id="exitGlow"></div>
+      <div id="winOverlay">
+        <div class="msg">
+          <p class="zhbig zh">曹操逃出华容道！</p>
+          <h3>Cao Cao escapes through Huarong Pass!</h3>
+          <p id="winStats"></p>
+          <div class="btns" style="justify-content:center">
+            <button id="btnAgain">Play again</button>
+            <button id="btnNext" class="gold">Next puzzle ▸</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="exitLabel"><span class="arrow">▼</span><span class="zh">华容道</span></div>
+  </section>
+
+  <aside id="panel">
+    <div class="card">
+      <h2>Puzzle layout</h2>
+      <select id="layoutSel" aria-label="Choose a starting layout"></select>
+      <div class="stats">
+        <div class="stat"><div class="v" id="stMoves">0</div><div class="k">Moves</div></div>
+        <div class="stat"><div class="v" id="stOpt">–</div><div class="k">Optimal</div></div>
+        <div class="stat"><div class="v" id="stBest">–</div><div class="k">Your best</div></div>
+        <div class="stat"><div class="v" id="stTime">0:00</div><div class="k">Time</div></div>
+      </div>
+      <div class="btns">
+        <button id="btnReset">Reset</button>
+        <button id="btnUndo">Undo</button>
+        <button id="btnRedo">Redo</button>
+        <button id="btnHint">Hint</button>
+        <button id="btnSolve" class="gold">Auto-solve</button>
+        <button id="btnSound" title="toggle sound">🔊</button>
+      </div>
+      <div class="hintline">Drag a block (or select it and use arrow keys / click an empty neighbour). One move = sliding one block any distance in a straight line; a small soldier may also turn once within a single drag. The famous “Blocked by Broad Sword and Standing Horses” layout needs at least 81 moves.</div>
+    </div>
+
+    <div class="card">
+      <h2>The pieces</h2>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <div class="card story">
+      <h2>The story</h2>
+      <p>In 208 AD, after his crushing defeat at the Battle of Red Cliffs (赤壁), the Wei warlord <b>Cao Cao</b> fled through the narrow Huarong Pass — where the Shu commander <b>Guan Yu</b> blocked his way. Remembering an old debt of gratitude, Guan Yu let him go.</p>
+      <p>On the board, the big 2×2 block is Cao Cao; the horizontal block below him is Guan Yu; the four tall blocks are the generals <span class="zh">张飞 赵云 马超 黄忠</span>; the small blocks are soldiers. Slide the blocks — none may be lifted — until Cao Cao reaches the opening at the bottom.</p>
+      <p>Professor Jiang Changying described the puzzle in his 1949 book <i>Science Entertainment</i> and named it <span class="zh">华容道</span>. A nearly identical puzzle was patented in England by J. H. Fleming in 1932, and the 81-move minimum for the classic layout was worked out by Thomas B. Lemann (<i>Scientific American</i>, March 1964).</p>
+      <p>Based on the description at <a href="https://chinesepuzzles.org/huarong-pass-sliding-block-puzzle/" target="_blank" rel="noopener">chinesepuzzles.org</a>.</p>
+    </div>
+  </aside>
+</main>
+
+<div id="toast"></div>
+
+<footer>
+  Named starting layouts follow the classic Chinese puzzle tradition (横刀立马, 插翅难飞, 层层设防 …). Optimal move counts are computed live by the built-in solver.
+</footer>
+
+<script>
+/*SOLVER-START*/
+"use strict";
+/* Board encoding (row-major, 4 cols × 5 rows):
+   'A'      = Cao Cao 2×2
+   'B'-'G'  = horizontal 2×1 blocks (Guan Yu & co.)
+   'H'-'M'  = vertical 1×2 blocks (the generals)
+   'N'-'['  = 1×1 soldiers
+   '@'      = empty cell
+   Layout strings follow the classic collection catalogued at fayaa.com
+   (as compiled in Simon Hung's Klotski solver, klotski.board.fayaa.js). */
+const LAYOUTS = [
+  { id:"hengdao",  zh:"横刀立马", en:"Blocked by Broad Sword and Standing Horses", board:"HAAIHAAIJBBKJNOKP@@Q" },
+  { id:"chachi",   zh:"插翅难飞", en:"Can't Fly Out, Even with Wings",             board:"HAANHAAOBBPQICCJI@@J" },
+  { id:"cengceng", zh:"层层设防", en:"Layered Blockage",                           board:"HAAIHAAINBBOPCCQ@DD@" },
+  { id:"shoukou",  zh:"守口如瓶", en:"Mouth Sealed Like a Bottle",                 board:"HAAIHAAINJ@OPJ@QBBCC" },
+  { id:"yunzhe",   zh:"云遮雾障", en:"Clouds and Fog Block the Way",               board:"HAAIHAAIJBBNJCCOP@@Q" },
+  { id:"shuixie",  zh:"水泄不通", en:"Not Even Water Can Escape",                  board:"HAANHAAOBBCCDDEEP@@Q" },
+  { id:"bingfen",  zh:"兵分三路", en:"Troops Split Three Ways",                    board:"NAAOHAAIHBBIJPQKJ@@K" },
+  { id:"silu",     zh:"四路进兵", en:"Advance on Four Roads",                      board:"NAAOPAAQH@BBH@CCDDEE" },
+  { id:"jingdi",   zh:"井底之蛙", en:"Frog in the Well",                           board:"NBBOHAAIHAAIPCCQ@DD@" },
+  { id:"wengzhong",zh:"瓮中之鳖", en:"Turtle in a Jar",                            board:"HAAIHAAIBBCCNDDOP@@Q" },
+  { id:"sanjun",   zh:"三军联防", en:"Three Armies in League",                     board:"AAHIAAHIBBCCNDDOP@@Q" },
+  { id:"dunbing",  zh:"屯兵东路", en:"Troops Garrisoned on the East",              board:"AAHIAAHIBBNOJKPQJK@@" },
+  { id:"dusai",    zh:"堵塞要道", en:"The Pass Is Choked",                         board:"NAAOPAAQHIBBHICC@DD@" },
+  { id:"jiezuxd",  zh:"捷足先登", en:"Swift Feet Arrive First",                    board:"NAAOPAAQ@BB@HIJKHIJK" },
+  { id:"binglin",  zh:"兵临城下", en:"Soldiers at the City Gate",                  board:"NAAOPAAQHIJKHIJK@BB@" },
+  { id:"qianhu",   zh:"前呼后拥", en:"Escorted Front and Back",                    board:"NOAABBAA" + "CCDDEEFF@@PQ" },
+  { id:"fenghui",  zh:"峰回路转", en:"Winding Mountain Road (the hardest known)",  board:"NOPHAAIHAAIJ@BBJ@QCC" }
+];
+
+const BW = 4, BH = 5;
+const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
+
+function pieceSize(c){
+  if(c === 'A') return [2,2];
+  if(c >= 'B' && c <= 'G') return [2,1];
+  if(c >= 'H' && c <= 'M') return [1,2];
+  return [1,1];
+}
+function pieceType(c){
+  if(c === 'A') return 'C';
+  if(c === '@') return 'E';
+  if(c >= 'B' && c <= 'G') return 'H';
+  if(c >= 'H' && c <= 'M') return 'V';
+  return 'S';
+}
+/* canonical key: identical piece types relabelled by scan order (soldiers interchangeable, etc.) */
+function canon(b){
+  const map = new Map(); const cnt = {H:0,V:0,S:0}; let out = '';
+  for(let i = 0; i < BW*BH; i++){
+    const c = b[i];
+    if(c === '@'){ out += '.'; continue; }
+    if(c === 'A'){ out += 'A'; continue; }
+    let m = map.get(c);
+    if(m === undefined){ const t = pieceType(c); m = t + (++cnt[t]); map.set(c, m); }
+    out += m;
+  }
+  return out;
+}
+function pieces(b){
+  const seen = new Set(); const list = [];
+  for(let y = 0; y < BH; y++) for(let x = 0; x < BW; x++){
+    const c = b[x + y*BW];
+    if(c === '@' || seen.has(c)) continue;
+    const [sx, sy] = pieceSize(c);
+    list.push({ c, x, y, sx, sy });
+    for(let dx = 0; dx < sx; dx++) for(let dy = 0; dy < sy; dy++) seen.add(b[x+dx + (y+dy)*BW]);
+  }
+  return list;
+}
+/* Classic Klotski move metric (matches the published 81-move solution):
+   one move = sliding one block any distance in a straight line;
+   a 1×1 soldier may additionally make one right-angle turn within the same move. */
+function genMoves(b){
+  const res = [];
+  for(const p of pieces(b)){
+    for(const [dx, dy] of DIRS){
+      let k = 0;
+      while(true){
+        const nx = p.x + dx*(k+1), ny = p.y + dy*(k+1);
+        if(nx < 0 || ny < 0 || nx + p.sx > BW || ny + p.sy > BH) break;
+        // only the newly entered strip must be empty (the rest of the new box
+        // overlaps the piece's own current cells)
+        if(!stripEmpty(b, nx, ny, p.sx, p.sy, dx, dy)) break;
+        k++;
+        const nb = b.slice();
+        for(let cx = 0; cx < p.sx; cx++) for(let cy = 0; cy < p.sy; cy++) nb[p.x+cx + (p.y+cy)*BW] = '@';
+        for(let cx = 0; cx < p.sx; cx++) for(let cy = 0; cy < p.sy; cy++) nb[nx+cx + (ny+cy)*BW] = p.c;
+        res.push({ c:p.c, from:[p.x,p.y], to:[nx,ny], b:nb });
+        if(p.sx === 1 && p.sy === 1){
+          const perps = dx !== 0 ? [[0,1],[0,-1]] : [[1,0],[-1,0]];
+          for(const [ex, ey] of perps){
+            let k2 = 0;
+            while(true){
+              const mx = nx + ex*(k2+1), my = ny + ey*(k2+1);
+              if(mx < 0 || my < 0 || mx >= BW || my >= BH || nb[mx+my*BW] !== '@') break;
+              k2++;
+              const nb2 = nb.slice();
+              nb2[nx + ny*BW] = '@';
+              nb2[mx + my*BW] = p.c;
+              res.push({ c:p.c, from:[p.x,p.y], to:[mx,my], b:nb2 });
+            }
+          }
+        }
+      }
+    }
+  }
+  return res;
+}
+function stripEmpty(b, nx, ny, sx, sy, dx, dy){
+  if(dx === 1){ for(let cy = 0; cy < sy; cy++) if(b[nx+sx-1 + (ny+cy)*BW] !== '@') return false; }
+  else if(dx === -1){ for(let cy = 0; cy < sy; cy++) if(b[nx + (ny+cy)*BW] !== '@') return false; }
+  else if(dy === 1){ for(let cx = 0; cx < sx; cx++) if(b[nx+cx + (ny+sy-1)*BW] !== '@') return false; }
+  else { for(let cx = 0; cx < sx; cx++) if(b[nx+cx + ny*BW] !== '@') return false; }
+  return true;
+}
+function isGoal(b){ return b[13]==='A' && b[14]==='A' && b[17]==='A' && b[18]==='A'; }
+
+/* BFS over classic-metric moves (straight slide any length; 1×1 may turn once) */
+function solve(startArr){
+  if(isGoal(startArr)) return [];
+  const startKey = canon(startArr);
+  const prev = new Map();
+  prev.set(startKey, { board:startArr, parentKey:null, move:null });
+  let frontier = [startArr];
+  while(frontier.length){
+    const next = [];
+    for(const b of frontier){
+      for(const mv of genMoves(b)){
+        const k = canon(mv.b);
+        if(prev.has(k)) continue;
+        prev.set(k, { board:mv.b, parentKey:canon(b), move:mv });
+        if(isGoal(mv.b)){
+          const moves = []; let cur = k;
+          while(prev.get(cur).move){ const e = prev.get(cur); moves.push(e.move); cur = e.parentKey; }
+          moves.reverse();
+          return moves;
+        }
+        next.push(mv.b);
+      }
+    }
+    frontier = next;
+  }
+  return null;
+}
+/*SOLVER-END*/
+
+/* ================= Game UI ================= */
+const $ = s => document.querySelector(s);
+const boardEl = $('#board'), innerEl = $('#inner'), blocksEl = $('#blocks'), gridEl = $('#grid');
+const exitGlow = $('#exitGlow'), exitLabel = $('#exitLabel');
+
+let cell = 84, gap = 4;
+let layout = LAYOUTS[0];
+let board = [];                 // array of 20 chars
+let els = new Map();            // piece char -> element
+let order = new Map();          // piece char -> index within its type (for names/colors)
+let history = [], cursor = 0;   // history of {c, from, to}
+let selected = null;            // selected piece char
+let started = false, won = false, animating = false, autoUsed = false;
+let gen = 0;                    // board generation; invalidates deferred animations after a reset
+let t0 = 0, timerId = null;
+let optimalCache = new Map();
+let soundOn = true;
+
+/* ---------- sizing ---------- */
+function computeCell(){
+  const avail = Math.min(window.innerWidth - 32, 560);
+  const panelW = Math.min(430, Math.max(300, window.innerWidth - 360));
+  const boardSpace = window.innerWidth > 760 ? Math.min(avail, window.innerWidth - panelW - 90) : avail;
+  cell = Math.max(52, Math.min(92, Math.floor((boardSpace - 2*18) / BW)));
+  const w = BW*cell + 2*18, h = BH*cell + 2*18;
+  boardEl.style.width = w + 'px';
+  innerEl.style.width = (w - 36) + 'px';
+  innerEl.style.height = (h - 36) + 'px';
+  gridEl.style.backgroundSize = cell + 'px ' + cell + 'px';
+  const gapW = 2*cell;
+  exitGlow.style.width = gapW + 'px';
+  exitGlow.style.left = (18 + cell) + 'px';
+  exitLabel.style.left = (18 + cell) + 'px';
+  exitLabel.style.width = gapW + 'px';
+  exitLabel.style.top = (h + 6) + 'px';
+  $('#boardWrap').style.height = (h + 64) + 'px';
+}
+function placeEl(p, x, y, animate){
+  const el = els.get(p);
+  if(!el) return;
+  if(!animate) el.style.transition = 'none';
+  el.style.transform = 'translate(' + (x*cell) + 'px,' + (y*cell) + 'px)';
+  if(!animate){ void el.offsetWidth; el.style.transition = ''; }
+}
+function layoutAll(){
+  for(const p of pieces(board)) placeEl(p.c, p.x, p.y, false);
+}
+
+/* ---------- names & colors ---------- */
+const GENERAL_NAMES = ['张飞','赵云','马超','黄忠'];
+function buildOrder(b){
+  const o = new Map(); const cnt = {C:0,H:0,V:0,S:0};
+  for(const p of pieces(b)){
+    const t = pieceType(p.c);
+    o.set(p.c, cnt[t]++);
+  }
+  return o;
+}
+function nameOf(c){
+  if(c === 'A') return '曹操';
+  const t = pieceType(c), i = order.get(c) || 0;
+  if(t === 'H') return i === 0 ? '关羽' : '大将';
+  if(t === 'V') return GENERAL_NAMES[i] || '偏将';
+  return '兵';
+}
+const GEN_COLORS = ['#2f5f8f','#7a4f86','#8a5a2b','#3f7f7f','#6b6b3f','#5f6f8f'];
+function colorOf(c){
+  const t = pieceType(c), i = order.get(c) || 0;
+  if(t === 'C') return '#a8322a';
+  if(t === 'H') return i === 0 ? '#2e6e46' : '#4d7a3a';
+  if(t === 'V') return GEN_COLORS[i % GEN_COLORS.length];
+  return '#8a6f47';
+}
+
+/* ---------- rendering ---------- */
+function renderBoard(){
+  blocksEl.innerHTML = '';
+  els.clear();
+  order = buildOrder(board);
+  for(const p of pieces(board)){
+    const [sx, sy] = pieceSize(p.c);
+    const el = document.createElement('div');
+    el.className = 'block' + (p.c === 'A' ? ' cao' : '');
+    el.dataset.piece = p.c;
+    const w = sx*cell - 2*gap, h = sy*cell - 2*gap;
+    el.style.width = w + 'px'; el.style.height = h + 'px';
+    el.style.background = 'linear-gradient(160deg,' + shade(colorOf(p.c), 18) + ',' + colorOf(p.c) + ' 55%,' + shade(colorOf(p.c), -18) + ')';
+    const lbl = document.createElement('span');
+    lbl.className = 'lbl zh' + (sy > sx ? ' vert' : '');
+    lbl.textContent = nameOf(p.c);
+    lbl.style.fontSize = (p.c === 'A') ? Math.round(cell*0.34) + 'px'
+                        : (sx*sy >= 2) ? Math.round(cell*0.24) + 'px'
+                        : Math.round(cell*0.22) + 'px';
+    el.appendChild(lbl);
+    blocksEl.appendChild(el);
+    els.set(p.c, el);
+    placeEl(p.c, p.x, p.y, false);
+    attachDrag(el, p.c);
+  }
+  renderLegend();
+}
+function shade(hex, amt){
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n>>16) + amt, g = ((n>>8)&255) + amt, b = (n&255) + amt;
+  r = Math.max(0, Math.min(255, r)); g = Math.max(0, Math.min(255, g)); b = Math.max(0, Math.min(255, b));
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+function renderLegend(){
+  const seen = new Map();
+  for(const p of pieces(board)){
+    const nm = nameOf(p.c);
+    if(!seen.has(nm)) seen.set(nm, colorOf(p.c));
+  }
+  $('#legend').innerHTML = [...seen].map(([nm, col]) =>
+    '<span><span class="sw" style="background:' + col + '"></span><span class="zh">' + nm + '</span></span>'
+  ).join('');
+}
+
+/* ---------- game state ---------- */
+function loadLayout(l){
+  layout = l;
+  board = l.board.split('');
+  history = []; cursor = 0; selected = null;
+  started = false; won = false; animating = false; autoUsed = false;
+  gen++;
+  t0 = 0; if(timerId){ clearInterval(timerId); timerId = null; }
+  $('#winOverlay').classList.remove('show');
+  computeCell();
+  renderBoard();
+  updateStats();
+  $('#stTime').textContent = '0:00';
+  if(!optimalCache.has(l.id)){
+    const sol = solve(board.slice());
+    optimalCache.set(l.id, sol ? sol.length : null);
+  }
+  updateOpt();
+}
+function updateOpt(){
+  const o = optimalCache.get(layout.id);
+  $('#stOpt').textContent = o === null ? '∞' : o;
+  const best = localStorage.getItem('hrd_best_' + layout.id);
+  $('#stBest').textContent = best ? JSON.parse(best).moves : '–';
+}
+function updateStats(){
+  $('#stMoves').textContent = cursor;
+  $('#btnUndo').disabled = cursor === 0 || animating;
+  $('#btnRedo').disabled = cursor >= history.length || animating;
+  $('#btnReset').disabled = false; // always available; resets (and cancels auto-solve)
+}
+function startTimer(){
+  if(started) return;
+  started = true; t0 = Date.now();
+  timerId = setInterval(() => {
+    const s = Math.floor((Date.now() - t0)/1000);
+    $('#stTime').textContent = Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+  }, 500);
+}
+function stopTimer(){ if(timerId){ clearInterval(timerId); timerId = null; } }
+
+function applyMove(mv, record){
+  const [fx, fy] = mv.from, [tx, ty] = mv.to;
+  const [sx, sy] = pieceSize(mv.c);
+  for(let cx = 0; cx < sx; cx++) for(let cy = 0; cy < sy; cy++) board[fx+cx + (fy+cy)*BW] = '@';
+  for(let cx = 0; cx < sx; cx++) for(let cy = 0; cy < sy; cy++) board[tx+cx + (ty+cy)*BW] = mv.c;
+  if(fx !== tx && fy !== ty){
+    // L-shaped soldier move: animate through the corner
+    const corner = Math.abs(tx-fx) >= Math.abs(ty-fy) ? [tx, fy] : [fx, ty];
+    placeEl(mv.c, corner[0], corner[1], true);
+    const g = gen;
+    setTimeout(() => { if(gen === g) placeEl(mv.c, tx, ty, true); }, 110);
+  } else {
+    placeEl(mv.c, tx, ty, true);
+  }
+  if(record){
+    if(cursor < history.length) history.length = cursor;
+    history.push(mv); cursor = history.length;
+    startTimer();
+  }
+  updateStats();
+  clickSound();
+}
+function undo(){
+  if(cursor === 0) return;
+  const mv = history[--cursor];
+  applyMove({ c:mv.c, from:mv.to, to:mv.from }, false);
+  updateStats();
+}
+function redo(){
+  if(cursor >= history.length) return;
+  applyMove(history[cursor++], false);
+  updateStats();
+}
+
+/* ---------- legal single-cell move helpers ---------- */
+function canMove(b, c, dx, dy){
+  const ps = pieces(b);
+  const p = ps.find(q => q.c === c);
+  if(!p) return false;
+  const nx = p.x + dx, ny = p.y + dy;
+  if(nx < 0 || ny < 0 || nx + p.sx > BW || ny + p.sy > BH) return false;
+  return stripEmpty(b, nx, ny, p.sx, p.sy, dx, dy);
+}
+function maxSlide(b, c, dx, dy){
+  let k = 0; const sim = b.slice();
+  while(canMove(sim, c, dx, dy)){
+    const p = pieces(sim).find(q => q.c === c);
+    for(let cx = 0; cx < p.sx; cx++) for(let cy = 0; cy < p.sy; cy++) sim[p.x+cx + (p.y+cy)*BW] = '@';
+    for(let cx = 0; cx < p.sx; cx++) for(let cy = 0; cy < p.sy; cy++) sim[p.x+dx+cx + (p.y+dy+cy)*BW] = c;
+    k++;
+  }
+  return k;
+}
+function tryMove(c, dx, dy){
+  if(won || animating) return false;
+  if(!canMove(board, c, dx, dy)) return false;
+  applyMove({ c, from:posOf(c), to:[posOf(c)[0]+dx, posOf(c)[1]+dy] }, true);
+  afterMove();
+  return true;
+}
+function posOf(c){
+  const p = pieces(board).find(q => q.c === c);
+  return p ? [p.x, p.y] : null;
+}
+function afterMove(){
+  if(isGoal(board)) win();
+}
+
+/* ---------- drag (one drag = one move; soldiers may turn once) ---------- */
+function attachDrag(el, c){
+  let st = null;
+  const is1x1 = () => { const s = pieceSize(c); return s[0] === 1 && s[1] === 1; };
+  el.addEventListener('pointerdown', e => {
+    if(won || animating) return;
+    const p = posOf(c);
+    st = { sx0:e.clientX, sy0:e.clientY, px:p[0], py:p[1],
+           a1:null, a:0, limA:0, e2:null, b:0, limB:0, sim:null };
+    el.setPointerCapture(e.pointerId);
+    selectPiece(c);
+    e.preventDefault();
+  });
+  el.addEventListener('pointermove', e => {
+    if(!st) return;
+    const dx = e.clientX - st.sx0, dy = e.clientY - st.sy0;
+    if(!st.a1){
+      if(Math.max(Math.abs(dx), Math.abs(dy)) < 6) return;
+      st.a1 = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? [1,0] : [-1,0]) : (dy > 0 ? [0,1] : [0,-1]);
+      st.limA = maxSlide(board, c, st.a1[0], st.a1[1]);
+    }
+    const dPrim = dx*st.a1[0] + dy*st.a1[1];
+    const dPerp = dx*st.a1[1] + dy*st.a1[0]; // signed perpendicular displacement
+    el.classList.add('dragging');
+
+    if(st.e2 === null){
+      st.a = Math.max(0, Math.min(st.limA, Math.round(dPrim / cell)));
+      // allow a right-angle turn for 1×1 blocks once the primary slide has happened
+      if(is1x1() && st.a >= 1 && Math.abs(dPerp) > cell*0.55){
+        const perps = st.a1[0] !== 0 ? [[0,1],[0,-1]] : [[1,0],[-1,0]];
+        st.e2 = (st.a1[0] !== 0)
+          ? (dPerp > 0 ? [0,1] : [0,-1])
+          : (dPerp > 0 ? [1,0] : [-1,0]);
+        // limits for the continuation, measured from the intermediate position
+        st.sim = board.slice();
+        st.sim[st.px + st.py*BW] = '@';
+        for(let i = 1; i <= st.a; i++){
+          st.sim[st.px + st.a1[0]*i + (st.py + st.a1[1]*i)*BW] = '@';
+        }
+        st.sim[st.px + st.a1[0]*st.a + (st.py + st.a1[1]*st.a)*BW] = c;
+        st.limB = maxSlide(st.sim, c, st.e2[0], st.e2[1]);
+      }
+    }
+    if(st.e2 !== null){
+      const perpFromPath = dPerp - 0; // perpendicular measured from the path point
+      st.b = Math.max(0, Math.min(st.limB, Math.round(perpFromPath / cell)));
+    }
+    const ox = st.a*st.a1[0] + (st.e2 ? st.b*st.e2[0] : 0);
+    const oy = st.a*st.a1[1] + (st.e2 ? st.b*st.e2[1] : 0);
+    const rubber = (st.a === 0 && st.b === 0) ? 0.35 : 0;
+    el.style.transform = 'translate(' + ((st.px + ox)*cell + dx*rubber) + 'px,' + ((st.py + oy)*cell + dy*rubber) + 'px)';
+  });
+  const finish = e => {
+    if(!st) return;
+    el.classList.remove('dragging');
+    const s = st; st = null;
+    if(s.a + s.b > 0){
+      const tx = s.px + s.a*s.a1[0] + (s.e2 ? s.b*s.e2[0] : 0);
+      const ty = s.py + s.a*s.a1[1] + (s.e2 ? s.b*s.e2[1] : 0);
+      applyMove({ c, from:[s.px, s.py], to:[tx, ty] }, true);
+      afterMove();
+    } else {
+      placeEl(c, s.px, s.py, true);
+    }
+  };
+  el.addEventListener('pointerup', finish);
+  el.addEventListener('pointercancel', finish);
+}
+
+/* ---------- selection & click-to-move & keyboard ---------- */
+function selectPiece(c){
+  if(selected && els.get(selected)) els.get(selected).classList.remove('selected');
+  selected = c;
+  if(c && els.get(c)) els.get(c).classList.add('selected');
+}
+blocksEl.addEventListener('click', e => {
+  if(won || animating) return;
+  const blk = e.target.closest('.block');
+  if(blk){ selectPiece(blk.dataset.piece); return; }
+  if(!selected) return;
+  const rect = innerEl.getBoundingClientRect();
+  const gx = Math.floor((e.clientX - rect.left) / cell);
+  const gy = Math.floor((e.clientY - rect.top) / cell);
+  const p = posOf(selected);
+  if(!p) return;
+  const [sx, sy] = pieceSize(selected);
+  // direction from piece bounding box toward clicked cell
+  let dx = 0, dy = 0;
+  if(gx < p.x) dx = -1; else if(gx >= p.x + sx) dx = 1;
+  if(gy < p.y) dy = -1; else if(gy >= p.y + sy) dy = 1;
+  if(dx && dy) { if(Math.abs(gx - (p.x + sx/2)) >= Math.abs(gy - (p.y + sy/2))) dy = 0; else dx = 0; }
+  if(dx || dy) tryMove(selected, dx, dy);
+});
+document.addEventListener('keydown', e => {
+  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){
+    if(!selected || won || animating) return;
+    e.preventDefault();
+    const d = { ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,-1], ArrowDown:[0,1] }[e.key];
+    tryMove(selected, d[0], d[1]);
+  }
+});
+
+/* ---------- hint & auto-solve ---------- */
+async function hint(){
+  if(won || animating) return;
+  const sol = solve(board.slice());
+  if(sol === null){ toast('No solution from this position — undo or reset.'); return; }
+  if(sol.length === 0) return;
+  const mv = sol[0];
+  selectPiece(mv.c);
+  await sleep(180);
+  applyMove(mv, true);
+  afterMove();
+  toast('Hint: ' + nameOf(mv.c) + ' — ' + (sol.length - 1) + ' optimal moves remain.');
+}
+async function autoSolve(){
+  if(won || animating) return;
+  const sol = solve(board.slice());
+  if(sol === null){ toast('No solution from this position — undo or reset.'); return; }
+  if(sol.length === 0) return;
+  animating = true; autoUsed = true; updateStats();
+  toast('Auto-solving ' + sol.length + ' optimal moves…');
+  for(const mv of sol){
+    if(!animating) break;
+    applyMove(mv, true);
+    afterMove();
+    if(won) break;
+    await sleep(230);
+  }
+  animating = false; updateStats();
+}
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+/* ---------- win ---------- */
+function win(){
+  if(won) return;
+  won = true; animating = false;
+  stopTimer();
+  selectPiece(null);
+  const secs = started ? Math.floor((Date.now() - t0)/1000) : 0;
+  const key = 'hrd_best_' + layout.id;
+  const prev = localStorage.getItem(key) ? JSON.parse(localStorage.getItem(key)) : null;
+  let newBest = false;
+  if(!autoUsed && (!prev || cursor < prev.moves)){ localStorage.setItem(key, JSON.stringify({ moves:cursor, time:secs })); newBest = true; }
+  updateOpt();
+  // slide Cao Cao out through the pass
+  const el = els.get('A');
+  if(el){
+    el.style.transition = 'transform .8s cubic-bezier(.4,.1,.3,1), opacity .5s .6s';
+    el.style.transform = 'translate(' + (1*cell) + 'px,' + ((BH+1)*cell) + 'px)';
+    el.style.opacity = '0';
+  }
+  winSound();
+  const g = gen;
+  setTimeout(() => {
+    if(gen !== g) return; // reset happened in the meantime
+    $('#winStats').textContent =
+      'Solved in ' + cursor + ' moves' +
+      (optimalCache.get(layout.id) != null ? ' (optimal: ' + optimalCache.get(layout.id) + ')' : '') +
+      ' · ' + Math.floor(secs/60) + ':' + String(secs%60).padStart(2,'0') +
+      (newBest ? ' · new best!' : '');
+    $('#winOverlay').classList.add('show');
+    confetti();
+  }, 900);
+}
+function confetti(){
+  const cols = ['#e8b04b','#c0392b','#2e6e46','#2f5f8f','#f2e8d5','#7a4f86'];
+  for(let i = 0; i < 60; i++){
+    const s = document.createElement('span');
+    s.className = 'confetti';
+    s.style.left = (Math.random()*100) + '%';
+    s.style.background = cols[i % cols.length];
+    s.style.animationDuration = (1.6 + Math.random()*1.8) + 's';
+    s.style.animationDelay = (Math.random()*0.7) + 's';
+    $('#boardWrap').appendChild(s);
+    setTimeout(() => s.remove(), 4200);
+  }
+}
+
+/* ---------- sound ---------- */
+let actx = null;
+function clickSound(){
+  if(!soundOn) return;
+  try{
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const t = actx.currentTime;
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = 'square'; o.frequency.setValueAtTime(180 + Math.random()*40, t);
+    g.gain.setValueAtTime(0.04, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.07);
+  }catch(e){}
+}
+function winSound(){
+  if(!soundOn) return;
+  try{
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const notes = [523, 659, 784, 1047];
+    notes.forEach((f, i) => {
+      const t = actx.currentTime + i*0.13;
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'triangle'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.4);
+    });
+  }catch(e){}
+}
+
+/* ---------- toast ---------- */
+let toastId = null;
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastId);
+  toastId = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+/* ---------- controls ---------- */
+const sel = $('#layoutSel');
+for(const l of LAYOUTS){
+  const o = document.createElement('option');
+  o.value = l.id;
+  o.textContent = l.zh + ' — ' + l.en;
+  sel.appendChild(o);
+}
+sel.addEventListener('change', () => loadLayout(LAYOUTS.find(l => l.id === sel.value)));
+$('#btnReset').addEventListener('click', () => loadLayout(layout));
+$('#btnUndo').addEventListener('click', undo);
+$('#btnRedo').addEventListener('click', redo);
+$('#btnHint').addEventListener('click', hint);
+$('#btnSolve').addEventListener('click', autoSolve);
+$('#btnSound').addEventListener('click', () => {
+  soundOn = !soundOn;
+  $('#btnSound').textContent = soundOn ? '🔊' : '🔇';
+});
+$('#btnAgain').addEventListener('click', () => loadLayout(layout));
+$('#btnNext').addEventListener('click', () => {
+  const i = (LAYOUTS.indexOf(layout) + 1) % LAYOUTS.length;
+  sel.value = LAYOUTS[i].id;
+  loadLayout(LAYOUTS[i]);
+});
+
+window.addEventListener('resize', () => { computeCell(); layoutAll(); });
+
+loadLayout(LAYOUTS[0]);
+</script>
+</body>
+</html>

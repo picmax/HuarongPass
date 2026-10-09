@@ -2,8 +2,7 @@
 
 A complete, self-contained HTML version of **Huarong Dao (华容道)** — the classic Chinese sliding-block puzzle known in the West as **Klotski**. Slide the warlord Cao Cao out of the pass.
 
-**▶ Play it here:** https://picmax.github.io/HuarongPass/  
-*(enable GitHub Pages: Settings → Pages → Deploy from a branch → `main` / root, then replace the URL above)*
+**▶ Play it here:** https://picmax.github.io/HuarongPass/
 
 No build step, no dependencies — a single `index.html` file that runs in any modern browser, desktop or mobile.
 
